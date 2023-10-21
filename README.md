@@ -1,6 +1,6 @@
-This is a shared space for resources we own for the Introduction to Compilers
-course at FMI.
+This directory contains a docker container description, example programs in
+COOL, and supporting code. Install docker, make sure dockerd is up and running,
+and use run.sh to start the container. You now have a shell into the container.
+Print the README.md inside there for more instructions.
 
-Resources we are allowed to use but don't own are provided by alternative
-channels.
-
+Once you leave the shell, stop the container and remove the image via stop.sh.
