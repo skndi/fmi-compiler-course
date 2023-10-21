@@ -14,7 +14,7 @@ RUN mkdir /usr/class
 
 RUN mkdir /usr/code
 
-ENV PATH="/usr/class/cs143/bin:${PATH}"
+ENV PATH="cs143/bin:${PATH}"
 
 WORKDIR /usr/code
 

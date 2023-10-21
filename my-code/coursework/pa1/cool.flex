@@ -53,11 +53,9 @@ TRUE_FALSE (t[Rr][Uu][Ee])|(f[Aa][Ll][Ss][Ee])
 SELFID self|SELF_TYPE
 TYPEID [A-Z][[:alnum:]_]*
 OBJECTID [a-z][[:alnum:]_]*
-COMMEN \(\*[^(\*\))]\*\)
-/*/ INT_CONST ;
-// STR_CONST;
-// OBJECTID;
-// TYPEID; */
+SPECIAL_NOTATION [{}():;\.,><=*+/\[\]"'-\\]
+INT_CONST [0-9]+
+
 DARROW          =>
 
 %%
@@ -82,9 +80,37 @@ DARROW          =>
 
 {OBJECTID}    { printf("#%d OBJECTID %s\n", curr_lineno, yytext); }
 
-COMMENT_START { /*count \n in yytext*\ }
+{SPECIAL_NOTATION} { printf("#%d %s\n", curr_lineno, yytext); }
 
-[ \t\r]+
+{INT_CONST}   { printf("#%d INT_CONST %s\n", curr_lineno, yytext); }
+
+/* Hangs when comment reaches EOF in test.cl */
+"\(*"        {
+                int c;
+
+                for ( ; ; )
+                    {
+                    while ( (c = yyinput()) != '*' &&
+                            c != EOF )
+                        ;    /* eat up text of comment */
+
+                    if ( c == '*' )
+                        {
+                        while ( (c = yyinput()) == '*' )
+                            ;
+                        if ( c == ')' )
+                            break;    /* found the end */
+                        }
+
+                    if ( c == EOF )
+                        {
+                        printf("aaaa");
+                        break;
+                        }
+                    }
+                }
+
+[ \t\r\f\v]+
 
 \n          {curr_lineno++;}
 
