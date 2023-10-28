@@ -94,7 +94,6 @@ LE              <=
   */
 
 <INITIAL>{
-
 {DARROW}		    { return DARROW; }
 {CLASS}         { return CLASS; }
 {ELSE}          { return ELSE; }
@@ -127,12 +126,12 @@ LE              <=
 
 [ \t\r\f\v]+
 \n          {curr_lineno++;}
-"/*"              BEGIN(IN_COMMENT);
+"(*"              BEGIN(IN_COMMENT);
 
 }
 
 <IN_COMMENT>{
-"*/"      BEGIN(INITIAL);
+"*)"      BEGIN(INITIAL);
 [^*\n]+   // eat comment in chunks
 "*"       // eat the lone star
 \n        curr_lineno++;
