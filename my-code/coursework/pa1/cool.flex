@@ -11,6 +11,7 @@
 #include <cool-parse.h>
 #include <stringtab.h>
 #include <utilities.h>
+#include <string>
 
 /* The compiler assumes these identifiers. */
 #define yylval cool_yylval
@@ -43,6 +44,7 @@ extern YYSTYPE cool_yylval;
  *  Add Your own definitions here
  */
  int string_index = 0;
+ std::string string_value;
 %}
 
 /*
@@ -73,14 +75,16 @@ FALSE (f[Aa][Ll][Ss][Ee])
 
 TYPEID ([A-Z][[:alnum:]_]*)|(SELF_TYPE)
 OBJECTID [a-z][[:alnum:]_]*
-SPECIAL_NOTATION [{}():;\.,<\*\+/\-\\]
+SPECIAL_NOTATION [{}():;\.,<\*\+/\-\\=~@]
 INT_CONST [0-9]+
 
 DARROW          =>
 ASSIGN          <-
 LE              <=
+ONELINE_COMMENT --.*\n
 
 %s IN_COMMENT
+%s IN_STRING
 
 %%
 
@@ -126,7 +130,9 @@ LE              <=
 
 [ \t\r\f\v]+
 \n          {curr_lineno++;}
+{ONELINE_COMMENT} {curr_lineno++;}
 "(*"              BEGIN(IN_COMMENT);
+\"                BEGIN(IN_STRING);
 
 }
 
@@ -135,6 +141,17 @@ LE              <=
 [^*\n]+   // eat comment in chunks
 "*"       // eat the lone star
 \n        curr_lineno++;
+}
+
+<IN_STRING>{
+\\b               { string_value += '\b'; }
+\\t               { string_value += '\t'; }
+\\n               { string_value += '\n'; }
+\\\n               { string_value += '\n'; }
+\\f               { string_value += '\f'; }
+\\.               { string_value += yytext[1]; }
+\"                { BEGIN(INITIAL); cool_yylval.symbol = new Entry(string_value.data(), string_value.size(), string_index++); string_value.clear(); return STR_CONST; }
+.                 { string_value += yytext[0]; }
 }
 
  /*

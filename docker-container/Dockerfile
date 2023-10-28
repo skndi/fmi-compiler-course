@@ -14,6 +14,8 @@ RUN mkdir /usr/class
 
 RUN mkdir /usr/code
 
+RUN useradd -ms /bin/bash nikolay
+
 ENV PATH="cs143/bin:${PATH}"
 
 WORKDIR /usr/code
