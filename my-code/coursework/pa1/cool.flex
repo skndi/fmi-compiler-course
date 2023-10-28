@@ -20,7 +20,7 @@
 #define MAX_STR_CONST 1025
 #define YY_NO_UNPUT   /* keep g++ happy */
 
-extern FILE *fin; /* we read from this file */
+extern FILE* fin; /* we read from this file */
 
 /* define YY_INPUT so we read from the FILE fin:
  * This change makes it possible to use this scanner in
@@ -42,21 +42,45 @@ extern YYSTYPE cool_yylval;
 /*
  *  Add Your own definitions here
  */
+ int string_index = 0;
 %}
 
 /*
  * Define names for regular expressions here.
  */
 
-KEYWORD (?i:class|else|fi|if|in|inherits|isvoid|let|loop|pool|then|while|case|esac|new|of|not)
-TRUE_FALSE (t[Rr][Uu][Ee])|(f[Aa][Ll][Ss][Ee])
-SELFID self|SELF_TYPE
-TYPEID [A-Z][[:alnum:]_]*
+CLASS (?i:class)
+ELSE (?i:else)
+FI (?i:fi)
+IF (?i:if)
+IN (?i:in)
+INHERITS (?i:inherits)
+ISVOID (?i:isvoid)
+LET (?i:let)
+LOOP (?i:loop)
+POOL (?i:pool)
+THEN (?i:then)
+WHILE (?i:while)
+CASE (?i:case)
+ESAC (?i:esac)
+NEW (?i:new)
+OF (?i:of)
+NOT (?i:not)
+
+TRUE (t[Rr][Uu][Ee])
+FALSE (f[Aa][Ll][Ss][Ee])
+
+
+TYPEID ([A-Z][[:alnum:]_]*)|(SELF_TYPE)
 OBJECTID [a-z][[:alnum:]_]*
-SPECIAL_NOTATION [{}():;\.,><=*+/\[\]"'-\\]
+SPECIAL_NOTATION [{}():;\.,<\*\+/\-\\]
 INT_CONST [0-9]+
 
 DARROW          =>
+ASSIGN          <-
+LE              <=
+
+%s IN_COMMENT
 
 %%
 
@@ -68,51 +92,51 @@ DARROW          =>
  /*
   *  The multiple-character operators.
   */
-{DARROW}		  { return (DARROW); }
 
-{KEYWORD}     { printf("#%d %s\n", curr_lineno, yytext); }
+<INITIAL>{
 
-{TRUE_FALSE}  { printf("#%d %s\n", curr_lineno, yytext); }
+{DARROW}		    { return DARROW; }
+{CLASS}         { return CLASS; }
+{ELSE}          { return ELSE; }
+{FI}            { return FI; }
+{IF}            { return IF; }
+{IN}            { return IN; }
+{INHERITS}      { return INHERITS; }
+{ISVOID}        { return ISVOID; }
+{LET}           { return LET; }
+{LOOP}          { return LOOP; }
+{POOL}          { return POOL; }
+{THEN}          { return THEN; }
+{WHILE}         { return WHILE; }
+{CASE}          { return CASE; }
+{ESAC}          { return ESAC; }
+{NEW}           { return NEW; }
+{OF}            { return OF; }
+{NOT}           { return NOT; }
 
-{SELFID}      { printf("#%d %s\n", curr_lineno, yytext); }
+{TRUE}          { cool_yylval.boolean = true; return BOOL_CONST; }
+{FALSE}         { cool_yylval.boolean = false; return BOOL_CONST; }
 
-{TYPEID}      { printf("#%d TYPEID %s\n", curr_lineno, yytext); }
+{TYPEID}        { cool_yylval.symbol = new Entry(yytext, strlen(yytext), string_index++); return TYPEID; }
+{OBJECTID}      { cool_yylval.symbol = new Entry(yytext, strlen(yytext), string_index++); return OBJECTID; }
+{SPECIAL_NOTATION} { return yytext[0]; }
+{ASSIGN}        { return ASSIGN; }
+{LE}            { return LE; }
 
-{OBJECTID}    { printf("#%d OBJECTID %s\n", curr_lineno, yytext); }
-
-{SPECIAL_NOTATION} { printf("#%d %s\n", curr_lineno, yytext); }
-
-{INT_CONST}   { printf("#%d INT_CONST %s\n", curr_lineno, yytext); }
-
-/* Hangs when comment reaches EOF in test.cl */
-"\(*"        {
-                int c;
-
-                for ( ; ; )
-                    {
-                    while ( (c = yyinput()) != '*' &&
-                            c != EOF )
-                        ;    /* eat up text of comment */
-
-                    if ( c == '*' )
-                        {
-                        while ( (c = yyinput()) == '*' )
-                            ;
-                        if ( c == ')' )
-                            break;    /* found the end */
-                        }
-
-                    if ( c == EOF )
-                        {
-                        printf("aaaa");
-                        break;
-                        }
-                    }
-                }
+{INT_CONST}  { cool_yylval.symbol = new Entry(yytext, strlen(yytext), string_index++); return INT_CONST; }
 
 [ \t\r\f\v]+
-
 \n          {curr_lineno++;}
+"/*"              BEGIN(IN_COMMENT);
+
+}
+
+<IN_COMMENT>{
+"*/"      BEGIN(INITIAL);
+[^*\n]+   // eat comment in chunks
+"*"       // eat the lone star
+\n        curr_lineno++;
+}
 
  /*
   *  String constants (C syntax)
