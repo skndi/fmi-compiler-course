@@ -43,8 +43,9 @@ extern YYSTYPE cool_yylval;
 /*
  *  Add Your own definitions here
  */
- int string_index = 0;
- std::string string_value;
+  int string_index = 0;
+  std::string string_value;
+  char* unterminated_string_error_msg = "Unterminated string constant";
 %}
 
 /*
@@ -144,14 +145,29 @@ ONELINE_COMMENT --.*\n
 }
 
 <IN_STRING>{
-\\b               { string_value += '\b'; }
-\\t               { string_value += '\t'; }
-\\n               { string_value += '\n'; }
-\\\n               { string_value += '\n'; }
-\\f               { string_value += '\f'; }
-\\.               { string_value += yytext[1]; }
-\"                { BEGIN(INITIAL); cool_yylval.symbol = new Entry(string_value.data(), string_value.size(), string_index++); string_value.clear(); return STR_CONST; }
-.                 { string_value += yytext[0]; }
+\\b                 { string_value += '\b'; }
+\\t                 { string_value += '\t'; }
+\\n                 { string_value += '\n'; }
+\\\n                {
+                      curr_lineno++;
+                      string_value += '\n'; 
+                    }
+\\f                 { string_value += '\f'; }
+\"                  {
+                      BEGIN(INITIAL);
+                      cool_yylval.symbol = new Entry(string_value.data(), string_value.size(), string_index++);
+                      string_value.clear();
+                      return STR_CONST;
+                    }
+\n                  {
+                      BEGIN(INITIAL);
+                      curr_lineno++;
+                      cool_yylval.error_msg=unterminated_string_error_msg;
+                      string_value.clear();
+                      return ERROR;
+                    }
+.                   { string_value += yytext[0]; }
+\\.                 { string_value += yytext[1]; }
 }
 
  /*
