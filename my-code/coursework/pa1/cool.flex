@@ -46,6 +46,7 @@ extern YYSTYPE cool_yylval;
   int string_index = 0;
   std::string string_value;
   char* unterminated_string_error_msg = "Unterminated string constant";
+  char* eof_in_comment_msg = "EOF in comment";
 %}
 
 /*
@@ -142,6 +143,11 @@ ONELINE_COMMENT --.*\n
 [^*\n]+   // eat comment in chunks
 "*"       // eat the lone star
 \n        curr_lineno++;
+<<EOF>>   {
+            BEGIN(INITIAL);
+            cool_yylval.error_msg = eof_in_comment_msg;
+            return ERROR;
+          }
 }
 
 <IN_STRING>{
