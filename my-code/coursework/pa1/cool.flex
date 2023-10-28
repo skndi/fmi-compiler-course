@@ -83,10 +83,12 @@ INT_CONST [0-9]+
 DARROW          =>
 ASSIGN          <-
 LE              <=
-ONELINE_COMMENT --.*\n
+ONELINE_COMMENT --.*$
+ONELINE_COMMENT_EOF --.*<<EOF>>
 
 %s IN_COMMENT
 %s IN_STRING
+%s IN_ONELINE_COMMENT
 
 %%
 
@@ -131,11 +133,10 @@ ONELINE_COMMENT --.*\n
 {INT_CONST}  { cool_yylval.symbol = new Entry(yytext, strlen(yytext), string_index++); return INT_CONST; }
 
 [ \t\r\f\v]+
-\n          {curr_lineno++;}
-{ONELINE_COMMENT} {curr_lineno++;}
+\n                {curr_lineno++;}
 "(*"              BEGIN(IN_COMMENT);
 \"                BEGIN(IN_STRING);
-
+--                BEGIN(IN_ONELINE_COMMENT);
 }
 
 <IN_COMMENT>{
@@ -150,6 +151,17 @@ ONELINE_COMMENT --.*\n
           }
 }
 
+<IN_ONELINE_COMMENT>{
+"\n"      {
+            curr_lineno++;
+            BEGIN(INITIAL);
+          }
+<<EOF>>   {
+            BEGIN(INITIAL);
+          }
+.
+}
+
 <IN_STRING>{
 \\b                 { string_value += '\b'; }
 \\t                 { string_value += '\t'; }
@@ -160,16 +172,16 @@ ONELINE_COMMENT --.*\n
                     }
 \\f                 { string_value += '\f'; }
 \"                  {
-                      BEGIN(INITIAL);
                       cool_yylval.symbol = new Entry(string_value.data(), string_value.size(), string_index++);
                       string_value.clear();
+                      BEGIN(INITIAL);
                       return STR_CONST;
                     }
 \n                  {
-                      BEGIN(INITIAL);
                       curr_lineno++;
                       cool_yylval.error_msg=unterminated_string_error_msg;
                       string_value.clear();
+                      BEGIN(INITIAL);
                       return ERROR;
                     }
 .                   { string_value += yytext[0]; }
