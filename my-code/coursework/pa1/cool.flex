@@ -47,6 +47,7 @@ extern YYSTYPE cool_yylval;
   std::string string_value;
   char* unterminated_string_error_msg = "Unterminated string constant";
   char* eof_in_comment_msg = "EOF in comment";
+  char* eof_in_string_msg = "EOF in string constant";
   char* unmatched_closing_comment_msg = "Unmatched *)";
   char* invalid_symbol_msg = "0";
 %}
@@ -176,6 +177,11 @@ ONELINE_COMMENT_EOF --.*<<EOF>>
 }
 
 <IN_STRING>{
+<<EOF>>   {
+            BEGIN(INITIAL);
+            cool_yylval.error_msg = eof_in_string_msg;
+            return ERROR;
+          }
 \\b                 { string_value += '\b'; }
 \\t                 { string_value += '\t'; }
 \\n                 { string_value += '\n'; }
