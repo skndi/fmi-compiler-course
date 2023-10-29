@@ -43,6 +43,7 @@ extern YYSTYPE cool_yylval;
 /*
  *  Add Your own definitions here
  */
+  int nested_comment_count = 0;
   int string_index = 0;
   std::string string_value;
   char* unterminated_string_error_msg = "Unterminated string constant";
@@ -138,7 +139,10 @@ ONELINE_COMMENT_EOF --.*<<EOF>>
 
 [ \t\r\f\v]+
 \n                {curr_lineno++;}
-"(*"              BEGIN(IN_COMMENT);
+"(*"              {
+                    nested_comment_count++;
+                    BEGIN(IN_COMMENT);
+                  }
 "*)"              { 
                     cool_yylval.error_msg = unmatched_closing_comment_msg;
                     return ERROR; 
@@ -154,8 +158,14 @@ ONELINE_COMMENT_EOF --.*<<EOF>>
 }
 
 <IN_COMMENT>{
-"*)"      BEGIN(INITIAL);
-[^*\n]+   // eat comment in chunks
+"(*"      { nested_comment_count++; }
+"*)"      {
+            nested_comment_count--;
+            if(nested_comment_count == 0){
+              BEGIN(INITIAL);
+            }
+          }
+[^*\n]    // eat comment in chunks
 "*"       // eat the lone star
 \n        curr_lineno++;
 <<EOF>>   {
