@@ -47,6 +47,7 @@ extern YYSTYPE cool_yylval;
   std::string string_value;
   char* unterminated_string_error_msg = "Unterminated string constant";
   char* eof_in_comment_msg = "EOF in comment";
+  char* invalid_symbol_msg = "0";
 %}
 
 /*
@@ -79,6 +80,7 @@ TYPEID ([A-Z][[:alnum:]_]*)|(SELF_TYPE)
 OBJECTID [a-z][[:alnum:]_]*
 SPECIAL_NOTATION [{}():;\.,<\*\+/\-\\=~@]
 INT_CONST [0-9]+
+FORBIDDEN_SYMBOLS [^{}():;\.,<\*\+/\-\\=~@[:alnum:]]
 
 DARROW          =>
 ASSIGN          <-
@@ -137,6 +139,12 @@ ONELINE_COMMENT_EOF --.*<<EOF>>
 "(*"              BEGIN(IN_COMMENT);
 \"                BEGIN(IN_STRING);
 --                BEGIN(IN_ONELINE_COMMENT);
+
+{FORBIDDEN_SYMBOLS} { 
+                      invalid_symbol_msg = yytext;
+                      cool_yylval.error_msg = invalid_symbol_msg;
+                      return ERROR; 
+                    }
 }
 
 <IN_COMMENT>{
