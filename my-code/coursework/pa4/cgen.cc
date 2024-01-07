@@ -208,6 +208,10 @@ static void emit_sub(char *dest, char *src1, char *src2, ostream &s) {
   s << SUB << dest << " " << src1 << " " << src2 << endl;
 }
 
+static void emit_slt(char *dest, char *src1, char *src2, ostream &s) {
+  s << SLT << dest << " " << src1 << " " << src2 << endl;
+}
+
 static void emit_sll(char *dest, char *src1, int num, ostream &s) {
   s << SLL << dest << " " << src1 << " " << num << endl;
 }
@@ -319,8 +323,8 @@ static void emit_push(char *reg, ostream &str) {
 }
 
 static void emit_pop(char *reg, ostream &str) {
-  emit_load(reg, 4, SP, str);
   emit_addiu(SP, SP, 4, str);
+  emit_load(reg, 0, SP, str);
 }
 
 //
@@ -1285,27 +1289,91 @@ void let_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
 
 int32_t let_class::nt() { return std::max({init->nt(), 1 + body->nt()}); }
 
-void plus_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {}
+// Loads e1 and e2's int values in T1 and ACC
+void emit_prepare_arith_values(Expression e1, Expression e2, CgenClassTableP cgen, int32_t &nt, ostream &s) {
+  e1->code(cgen, nt, s);
+  emit_load(ACC, DEFAULT_OBJFIELDS, ACC, s);
+  emit_push(ACC, s);
+  e2->code(cgen, nt, s);
+  emit_load(ACC, DEFAULT_OBJFIELDS, ACC, s);
+  emit_pop(T1, s);
+}
+
+// Leaves ptr to new object in ACC
+void emit_make_new_object_of_type(Symbol objType, ostream &s) {
+  emit_partial_load_address(ACC, s);
+  emit_protobj_ref(Int, s);
+  s << endl;
+
+  emit_partial_jal(s);
+  emit_method_ref(Object, ::copy, s);
+  s << endl;
+
+  emit_partial_jal(s);
+  emit_init_ref(Int, s);
+  s << endl;
+}
+
+// Creates new Int objectd and fills it with correct data
+// Takes int value from ACC and leaves ptr to new obj in ACC
+void emit_store_arith_result(ostream &s) {
+  emit_push(ACC, s);
+
+  emit_make_new_object_of_type(Int, s);
+
+  emit_pop(T1, s);
+  emit_store(T1, DEFAULT_OBJFIELDS, ACC, s);
+}
+
+void plus_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+  emit_prepare_arith_values(e1, e2, cgen, nt, s);
+  emit_add(ACC, T1, ACC, s);
+  emit_store_arith_result(s);
+}
 
 int32_t plus_class::nt() { return std::max(e1->nt(), e2->nt() + 1); }
 
-void sub_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {}
+void sub_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+  emit_prepare_arith_values(e1, e2, cgen, nt, s);
+  emit_sub(ACC, T1, ACC, s);
+  emit_store_arith_result(s);
+}
 
 int32_t sub_class::nt() { return std::max(e1->nt(), e2->nt() + 1); }
 
-void mul_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {}
+void mul_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+  emit_prepare_arith_values(e1, e2, cgen, nt, s);
+  emit_mul(ACC, T1, ACC, s);
+  emit_store_arith_result(s);
+}
 
 int32_t mul_class::nt() { return std::max(e1->nt(), e2->nt() + 1); }
 
-void divide_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {}
+void divide_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+  emit_prepare_arith_values(e1, e2, cgen, nt, s);
+  emit_div(ACC, T1, ACC, s);
+  emit_store_arith_result(s);
+}
 
 int32_t divide_class::nt() { return std::max(e1->nt(), e2->nt() + 1); }
 
-void neg_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {}
+void neg_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+  e1->code(cgen, nt, s);
+  emit_load(ACC, DEFAULT_OBJFIELDS, ACC, s);
+  emit_neg(ACC, ACC, s);
+  emit_store_arith_result(s);
+}
 
 int32_t neg_class::nt() { return 0; }
 
-void lt_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {}
+void lt_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+  emit_prepare_arith_values(e1, e2, cgen, nt, s);
+  emit_slt(ACC, T1, ACC, s);
+  emit_push(ACC, s);
+  emit_make_new_object_of_type(Bool, s);
+  emit_pop(T1, s);
+  emit_store(T1, DEFAULT_OBJFIELDS, ACC, s);
+}
 
 int32_t lt_class::nt() { return std::max(e1->nt(), e2->nt() + 1); }
 
