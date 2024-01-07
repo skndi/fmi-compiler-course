@@ -111,3 +111,4 @@
 #define BLT "\tblt\t"
 #define BGT "\tbgt\t"
 #define SLT "\tslt\t"
+#define SEQ "\tseq\t"

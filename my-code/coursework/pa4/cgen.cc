@@ -212,6 +212,10 @@ static void emit_slt(char *dest, char *src1, char *src2, ostream &s) {
   s << SLT << dest << " " << src1 << " " << src2 << endl;
 }
 
+static void emit_seq(char *dest, char *src1, char *src2, ostream &s) {
+  s << SEQ << dest << " " << src1 << " " << src2 << endl;
+}
+
 static void emit_sll(char *dest, char *src1, int num, ostream &s) {
   s << SLL << dest << " " << src1 << " " << num << endl;
 }
@@ -1255,7 +1259,22 @@ int32_t dispatch_class::nt() {
   return *std::max_element(nts.begin(), nts.end());
 }
 
-void cond_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {}
+void cond_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+  pred->code(cgen, nt, s);
+  emit_load(ACC, DEFAULT_OBJFIELDS, ACC, s);
+  int midLabel = cgen->free_label++;
+  int endLabel = cgen->free_label++;
+  emit_beq(ACC, ZERO, midLabel, s); // If false go to mid
+
+  then_exp->code(cgen, nt, s);
+
+  emit_branch(endLabel, s);
+  emit_label_def(midLabel, s);
+
+  else_exp->code(cgen, nt, s);
+
+  emit_label_def(endLabel, s);
+}
 
 int32_t cond_class::nt() {
   return std::max({pred->nt(), then_exp->nt(), else_exp->nt()});
@@ -1411,7 +1430,22 @@ void lt_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
 
 int32_t lt_class::nt() { return std::max(e1->nt(), e2->nt() + 1); }
 
-void eq_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {}
+void eq_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+  e1->code(cgen, nt, s);
+  emit_push(ACC, s);
+  e2->code(cgen, nt, s);
+  emit_move(T1, ACC, s);
+  emit_pop(T2, s);
+  emit_load_imm(ACC, 1, s);
+  emit_load_imm(A1, 0, s);
+  emit_jal("equality_test", s);
+
+  emit_push(ACC, s);
+
+  emit_make_new_object_of_type(Bool, s);
+  emit_pop(T1, s);
+  emit_store(T1, DEFAULT_OBJFIELDS, ACC, s);
+}
 
 int32_t eq_class::nt() { return std::max(e1->nt(), e2->nt() + 1); }
 
