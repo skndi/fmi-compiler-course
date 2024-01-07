@@ -1280,7 +1280,17 @@ int32_t cond_class::nt() {
   return std::max({pred->nt(), then_exp->nt(), else_exp->nt()});
 }
 
-void loop_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {}
+void loop_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+  int startLabel = cgen->free_label++;
+  int endLabel = cgen->free_label++;
+  emit_label_def(startLabel, s);
+  pred->code(cgen, nt, s);
+  emit_load(ACC, DEFAULT_OBJFIELDS, ACC, s);
+  emit_beq(ACC, ZERO, endLabel, s);
+  body->code(cgen, nt, s);
+  emit_branch(startLabel, s);
+  emit_label_def(endLabel, s);
+}
 
 int32_t loop_class::nt() { return 0; }
 
