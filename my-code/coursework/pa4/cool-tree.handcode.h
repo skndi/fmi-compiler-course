@@ -87,13 +87,15 @@ typedef Cases_class *Cases;
     type = s;                                                                  \
     return this;                                                               \
   }                                                                            \
-  virtual void code(CgenClassTableP cgen, ostream &) = 0;                      \
+  virtual void code(CgenClassTableP cgen, int32_t &nt, ostream &) = 0;         \
+  virtual int32_t nt() = 0;                                                    \
   virtual void dump_with_types(ostream &, int) = 0;                            \
   void dump_type(ostream &, int);                                              \
   Expression_class() { type = (Symbol)NULL; }
 
 #define Expression_SHARED_EXTRAS                                               \
-  void code(CgenClassTableP cgen, ostream &);                                  \
-  void dump_with_types(ostream &, int);
+  void code(CgenClassTableP cgen, int32_t &nt, ostream &);                     \
+  void dump_with_types(ostream &, int);                                        \
+  int32_t nt();
 
 #endif
