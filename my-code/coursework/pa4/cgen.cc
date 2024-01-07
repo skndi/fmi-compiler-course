@@ -789,8 +789,11 @@ void CgenClassTable::code_initializer(CgenNodeP nd) {
     Feature f = fs->nth(i);
     if (attr_class *a = dynamic_cast<attr_class *>(f)) {
       int32_t nt{};
-      a->init->code(this, nt, str);
-      emit_store(ACC, DEFAULT_OBJFIELDS + offset, SELF, str);
+      no_expr_class *expr = dynamic_cast<no_expr_class *>(a->init);
+      if (!expr) {
+        a->init->code(this, nt, str);
+        emit_store(ACC, DEFAULT_OBJFIELDS + offset, SELF, str);
+      }
       offset++;
     }
   }
@@ -808,7 +811,6 @@ void CgenClassTable::code_initializers() {
 void CgenClassTable::code_method(CgenNodeP nd, method_class *m) {
   auto &current_class_environment = context.E[nd->name->get_string()];
   current_class_environment.enterscope();
-  context.S.enterscope();
 
   Symbol class_name = nd->get_name();
   Symbol method_name = m->name;
@@ -843,7 +845,6 @@ void CgenClassTable::code_method(CgenNodeP nd, method_class *m) {
 
   emit_return(str);
 
-  context.S.exitscope();
   current_class_environment.exitscope();
 }
 
@@ -867,7 +868,7 @@ void CgenClassTable::code_all_methods() {
   for (List<CgenNode> *l = nds; l; l = l->tl()) {
     CgenNodeP nd = l->hd();
     context.E[nd->name->get_string()].enterscope();
-    context.E[nd->name->get_string()].enterscope();
+    context.method_environment[nd->name->get_string()].enterscope();
     int32_t method_counter = 0;
     int32_t attribute_counter = 0;
     build_method_and_attribute_indices(nd, nd, method_counter,
@@ -1044,12 +1045,14 @@ void CgenClassTable::build_method_and_attribute_indices(
   }
   Symbol name = current_class->get_name();
   auto &current_class_environment = context.E[name->get_string()];
+  auto &current_class_method_environment =
+      context.method_environment[name->get_string()];
 
   Features fs = nd->features;
   for (int i = fs->first(); fs->more(i); i = fs->next(i)) {
     Feature f = fs->nth(i);
     if (method_class *a = dynamic_cast<method_class *>(f)) {
-      current_class_environment.addid(
+      current_class_method_environment.addid(
           a->name, new std::pair(std::string(SELF), method_counter));
       method_counter++;
     } else if (attr_class *a = dynamic_cast<attr_class *>(f)) {
@@ -1195,6 +1198,13 @@ void dispatch_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
 
   expr->code(cgen, nt, s);
 
+  /* int32_t label0 = cgen->free_label;
+  cgen->free_label++;
+  int32_t label1 = cgen->free_label;
+  cgen->free_label++;
+
+  emit_beqz(ACC, , s); */
+
   Symbol class_name;
   if (expr->get_type()->equal_string(SELF_TYPE->get_string(),
                                      SELF_TYPE->get_len())) {
@@ -1204,7 +1214,9 @@ void dispatch_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
   }
 
   int32_t method_offset =
-      cgen->context.E[class_name->get_string()].lookup(name)->second;
+      cgen->context.method_environment[class_name->get_string()]
+          .lookup(name)
+          ->second;
 
   emit_load_method(T1, method_offset, s);
 
@@ -1275,7 +1287,9 @@ void let_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
   emit_init_ref(type_decl, s);
   s << endl;
 
-  init->code(cgen, nt, s);
+  if (!dynamic_cast<no_expr_class *>(init)) {
+    init->code(cgen, nt, s);
+  }
 
   emit_store(ACC, nt, FP, s);
 
@@ -1418,7 +1432,10 @@ void isvoid_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {}
 
 int32_t isvoid_class::nt() { return 0; }
 
-void no_expr_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {}
+void no_expr_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+
+  emit_move(ACC, ZERO, s);
+}
 
 int32_t no_expr_class::nt() { return 0; }
 

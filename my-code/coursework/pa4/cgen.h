@@ -13,7 +13,9 @@ struct Context {
   std::unordered_map<std::string,
                      SymbolTable<Symbol, std::pair<std::string, int32_t>>>
       E;
-  SymbolTable<Symbol, Symbol> S;
+  std::unordered_map<std::string,
+                     SymbolTable<Symbol, std::pair<std::string, int32_t>>>
+      method_environment;
   SymbolTable<Symbol, Symbol> C;
 };
 
@@ -86,6 +88,7 @@ public:
   int32_t get_index_of_attribute_in_dispatch_table(Symbol class_name,
                                                    Symbol attribute_name);
   Context context;
+  int32_t free_label{};
 };
 
 class CgenNode : public class__class {
