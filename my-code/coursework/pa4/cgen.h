@@ -9,6 +9,12 @@ enum Basicness { Basic, NotBasic };
 #define TRUE 1
 #define FALSE 0
 
+class CgenClassTable;
+typedef CgenClassTable *CgenClassTableP;
+
+class CgenNode;
+typedef CgenNode *CgenNodeP;
+
 struct Context {
   std::unordered_map<std::string,
                      SymbolTable<Symbol, std::pair<std::string, int32_t>>>
@@ -16,14 +22,8 @@ struct Context {
   std::unordered_map<std::string,
                      SymbolTable<Symbol, std::pair<std::string, int32_t>>>
       method_environment;
-  SymbolTable<Symbol, Symbol> C;
+  SymbolTable<Symbol, CgenNode> C;
 };
-
-class CgenClassTable;
-typedef CgenClassTable *CgenClassTableP;
-
-class CgenNode;
-typedef CgenNode *CgenNodeP;
 
 class CgenClassTable : public SymbolTable<Symbol, CgenNode> {
 private:

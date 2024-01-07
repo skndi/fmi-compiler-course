@@ -851,7 +851,7 @@ void CgenClassTable::code_method(CgenNodeP nd, method_class *m) {
 void CgenClassTable::code_class_methods(CgenNodeP nd) {
   context.C.enterscope();
   Symbol name = nd->get_name();
-  context.C.addid(SELF_TYPE, &name);
+  context.C.addid(SELF_TYPE, nd);
 
   Features fs = nd->features;
   for (int i = fs->first(); fs->more(i); i = fs->next(i)) {
@@ -1163,6 +1163,7 @@ CgenNode::CgenNode(Class_ nd, Basicness bstatus, CgenClassTableP ct)
     : class__class((const class__class &)*nd), parentnd(NULL), children(NULL),
       basic_status(bstatus) {
   stringtable.add_string(name->get_string()); // Add class name to string table
+  stringtable.add_string(nd->get_filename()->get_string());
 }
 
 //******************************************************************
@@ -1177,7 +1178,7 @@ CgenNode::CgenNode(Class_ nd, Basicness bstatus, CgenClassTableP ct)
 
 void assign_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
   expr->code(cgen, nt, s);
-  Symbol class_name = *(cgen->context.C.lookup(SELF_TYPE));
+  Symbol class_name = cgen->context.C.lookup(SELF_TYPE)->get_name();
   auto &[reg, offset] =
       *(cgen->context.E[class_name->get_string()].lookup(name));
   emit_store(ACC, offset, reg.data(), s);
@@ -1198,17 +1199,35 @@ void dispatch_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
 
   expr->code(cgen, nt, s);
 
-  /* int32_t label0 = cgen->free_label;
-  cgen->free_label++;
-  int32_t label1 = cgen->free_label;
+  int32_t good_case = cgen->free_label;
   cgen->free_label++;
 
-  emit_beqz(ACC, , s); */
+  emit_bne(ACC, ZERO, good_case, s);
+
+  emit_partial_load_address(ACC, s);
+  emit_protobj_ref(Str, s);
+  s << endl;
+
+  emit_partial_jal(s);
+  emit_method_ref(Object, ::copy, s);
+  s << endl;
+
+  emit_partial_jal(s);
+  emit_init_ref(Str, s);
+  s << endl;
+
+  emit_load_imm(T1, get_line_number(), s);
+  Symbol file_name = cgen->context.C.lookup(SELF_TYPE)->get_filename();
+  emit_load_string(ACC, stringtable.lookup_string(file_name->get_string()), s);
+
+  emit_jal(DISPATCH_ABORT, s);
+
+  emit_label_def(good_case, s);
 
   Symbol class_name;
   if (expr->get_type()->equal_string(SELF_TYPE->get_string(),
                                      SELF_TYPE->get_len())) {
-    class_name = *(cgen->context.C.lookup(SELF_TYPE));
+    class_name = cgen->context.C.lookup(SELF_TYPE)->get_name();
   } else {
     class_name = expr->get_type();
   }
@@ -1271,7 +1290,7 @@ int32_t block_class::nt() {
 }
 
 void let_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
-  Symbol class_name = *cgen->context.C.lookup(SELF_TYPE);
+  Symbol class_name = cgen->context.C.lookup(SELF_TYPE)->get_name();
   auto &class_environment = cgen->context.E[class_name->get_string()];
   class_environment.enterscope();
 
@@ -1304,7 +1323,8 @@ void let_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
 int32_t let_class::nt() { return std::max({init->nt(), 1 + body->nt()}); }
 
 // Loads e1 and e2's int values in T1 and ACC
-void emit_prepare_arith_values(Expression e1, Expression e2, CgenClassTableP cgen, int32_t &nt, ostream &s) {
+void emit_prepare_arith_values(Expression e1, Expression e2,
+                               CgenClassTableP cgen, int32_t &nt, ostream &s) {
   e1->code(cgen, nt, s);
   emit_load(ACC, DEFAULT_OBJFIELDS, ACC, s);
   emit_push(ACC, s);
@@ -1443,7 +1463,7 @@ void object_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
   if (name->equal_string(self->get_string(), self->get_len())) {
     emit_move(ACC, SELF, s);
   } else {
-    Symbol class_name = *cgen->context.C.lookup(SELF_TYPE);
+    Symbol class_name = cgen->context.C.lookup(SELF_TYPE)->get_name();
     auto &[reg, offset] =
         *(cgen->context.E[class_name->get_string()].lookup(name));
     emit_load(ACC, offset, reg.data(), s);
