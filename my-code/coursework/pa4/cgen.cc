@@ -1438,7 +1438,7 @@ void eq_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
   emit_pop(T2, s);
   emit_load_imm(ACC, 1, s);
   emit_load_imm(A1, 0, s);
-  emit_jal("equality_test", s);
+  emit_jal(EQUALITY_TEST, s);
 
   emit_push(ACC, s);
 
