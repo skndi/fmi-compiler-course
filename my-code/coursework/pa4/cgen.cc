@@ -1449,11 +1449,29 @@ void eq_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
 
 int32_t eq_class::nt() { return std::max(e1->nt(), e2->nt() + 1); }
 
-void leq_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {}
+void leq_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+  emit_prepare_arith_values(e1, e2, cgen, nt, s);
+  emit_load_imm(T2, 1, s);
+  emit_sub(T1, T1, T2, s);
+  emit_slt(ACC, T1, ACC, s);
+  emit_push(ACC, s);
+  emit_make_new_object_of_type(Bool, s);
+  emit_pop(T1, s);
+  emit_store(T1, DEFAULT_OBJFIELDS, ACC, s);
+}
 
 int32_t leq_class::nt() { return std::max(e1->nt(), e2->nt() + 1); }
 
-void comp_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {}
+void comp_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+  e1->code(cgen, nt, s);
+  emit_load(ACC, DEFAULT_OBJFIELDS, ACC, s);
+  emit_load_imm(T1, 1, s);
+  emit_sub(ACC, T1, ACC, s);
+  emit_push(ACC, s);
+  emit_make_new_object_of_type(Bool, s);
+  emit_pop(T1, s);
+  emit_store(T1, DEFAULT_OBJFIELDS, ACC, s);
+}
 
 int32_t comp_class::nt() { return 0; }
 
