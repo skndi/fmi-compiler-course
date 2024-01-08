@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <unordered_map>
+#include <vector>
 
 enum Basicness { Basic, NotBasic };
 #define TRUE 1
@@ -17,10 +18,9 @@ typedef CgenNode *CgenNodeP;
 
 struct Context {
   std::unordered_map<std::string,
-                     SymbolTable<Symbol, std::pair<std::string, int32_t>>>
+                     SymbolTable<Symbol, std::pair<std::string, size_t>>>
       E;
-  std::unordered_map<std::string,
-                     SymbolTable<Symbol, std::pair<std::string, int32_t>>>
+  std::unordered_map<std::string, SymbolTable<Symbol, size_t>>
       method_environment;
   SymbolTable<Symbol, CgenNode> C;
 };
@@ -54,7 +54,14 @@ private:
   void code_class_object_entry(CgenNodeP nd);
   void code_class_object_table();
 
-  void code_dispatch_methods(CgenNodeP nd);
+  struct MethodCompare {
+    bool operator()(std::pair<std::string, int32_t> a,
+                    std::pair<std::string, int32_t> b) {
+      return a.second < b.second;
+    }
+  };
+  void code_dispatch_methods(CgenNodeP nd,
+                             std::vector<std::pair<Symbol, Symbol>> &methods);
   void code_dispatch_table(CgenNodeP nd);
   void code_dispatch_tables();
 
@@ -74,8 +81,8 @@ private:
   void install_class(CgenNodeP nd);
   void install_classes(Classes cs);
   void build_method_and_attribute_indices(CgenNodeP current_class, CgenNodeP nd,
-                                          int32_t &method_counter,
-                                          int32_t &attribute_counter);
+                                          std::vector<Symbol> &methods,
+                                          size_t &attribute_counter);
   void build_inheritance_tree();
   void set_relations(CgenNodeP nd);
 

@@ -25,6 +25,7 @@
 #include "cgen.h"
 #include "cgen_gc.h"
 #include <algorithm>
+#include <set>
 #include <stack>
 #include <vector>
 
@@ -744,25 +745,44 @@ void CgenClassTable::code_class_object_table() {
   }
 }
 
-void CgenClassTable::code_dispatch_methods(CgenNodeP nd) {
+// TODO fix dispatch table creation
+void CgenClassTable::code_dispatch_methods(
+    CgenNodeP nd, std::vector<std::pair<Symbol, Symbol>> &methods) {
   if (nd->get_parentnd()->get_name() != No_class) {
-    code_dispatch_methods(nd->get_parentnd());
+    code_dispatch_methods(nd->get_parentnd(), methods);
   }
 
   Features fs = nd->features;
   for (int i = fs->first(); fs->more(i); i = fs->next(i)) {
     Feature f = fs->nth(i);
     if (method_class *a = dynamic_cast<method_class *>(f)) {
-      str << WORD;
-      emit_method_ref(nd->get_name(), a->name, str);
-      str << endl;
+      auto iter =
+          std::find_if(methods.begin(), methods.end(),
+                       [a](const std::pair<Symbol, Symbol> &elem) {
+                         auto &[class_name, method_name] = elem;
+                         return a->name->equal_string(method_name->get_string(),
+                                                      method_name->get_len());
+                       });
+      if (iter != methods.end()) {
+        iter->first = nd->name;
+        return;
+      }
+
+      methods.emplace_back(nd->name, a->name);
     }
   }
 }
 
 void CgenClassTable::code_dispatch_table(CgenNodeP nd) {
   str << nd->get_name() << DISPTAB_SUFFIX << LABEL;
-  code_dispatch_methods(nd);
+  std::vector<std::pair<Symbol, Symbol>> methods;
+  code_dispatch_methods(nd, methods);
+
+  for (auto [class_name, method_name] : methods) {
+    str << WORD;
+    emit_method_ref(class_name, method_name, str);
+    str << endl;
+  }
 }
 
 void CgenClassTable::code_dispatch_tables() {
@@ -799,7 +819,7 @@ void CgenClassTable::code_initializer(CgenNodeP nd) {
   for (int i = fs->first(); fs->more(i); i = fs->next(i)) {
     Feature f = fs->nth(i);
     if (attr_class *a = dynamic_cast<attr_class *>(f)) {
-      int32_t nt{};
+      size_t nt{};
       no_expr_class *expr = dynamic_cast<no_expr_class *>(a->init);
       if (!expr) {
         a->init->code(this, nt, str);
@@ -831,7 +851,7 @@ void CgenClassTable::code_method(CgenNodeP nd, method_class *m) {
   Symbol class_name = nd->get_name();
   Symbol method_name = m->name;
 
-  int32_t nt = m->expr->nt();
+  size_t nt = m->expr->nt();
   Formals fs = m->formals;
   int32_t offset = fs->len();
   for (int i = fs->first(); fs->more(i); i = fs->next(i)) {
@@ -885,10 +905,9 @@ void CgenClassTable::code_all_methods() {
     CgenNodeP nd = l->hd();
     context.E[nd->name->get_string()].enterscope();
     context.method_environment[nd->name->get_string()].enterscope();
-    int32_t method_counter = 0;
-    int32_t attribute_counter = 0;
-    build_method_and_attribute_indices(nd, nd, method_counter,
-                                       attribute_counter);
+    size_t attribute_counter = 0;
+    std::vector<Symbol> methods;
+    build_method_and_attribute_indices(nd, nd, methods, attribute_counter);
   }
 
   for (List<CgenNode> *l = nds; l; l = l->tl()) {
@@ -1053,11 +1072,11 @@ void CgenClassTable::install_class(CgenNodeP nd) {
 }
 
 void CgenClassTable::build_method_and_attribute_indices(
-    CgenNodeP current_class, CgenNodeP nd, int32_t &method_counter,
-    int32_t &attribute_counter) {
+    CgenNodeP current_class, CgenNodeP nd, std::vector<Symbol> &methods,
+    size_t &attribute_counter) {
   if (nd->get_parentnd()->get_name() != No_class) {
     build_method_and_attribute_indices(current_class, nd->get_parentnd(),
-                                       method_counter, attribute_counter);
+                                       methods, attribute_counter);
   }
   Symbol name = current_class->get_name();
   auto &current_class_environment = context.E[name->get_string()];
@@ -1068,9 +1087,18 @@ void CgenClassTable::build_method_and_attribute_indices(
   for (int i = fs->first(); fs->more(i); i = fs->next(i)) {
     Feature f = fs->nth(i);
     if (method_class *a = dynamic_cast<method_class *>(f)) {
-      current_class_method_environment.addid(
-          a->name, new std::pair(std::string(SELF), method_counter));
-      method_counter++;
+      auto iter = std::find_if(
+          methods.begin(), methods.end(), [a](const Symbol &method_name) {
+            return a->name->equal_string(method_name->get_string(),
+                                         method_name->get_len());
+          });
+      if (iter != methods.end()) {
+        continue;
+      }
+
+      current_class_method_environment.addid(a->name,
+                                             new size_t(methods.size()));
+      methods.emplace_back(a->name);
     } else if (attr_class *a = dynamic_cast<attr_class *>(f)) {
       current_class_environment.addid(
           a->name, new std::pair(std::string(SELF),
@@ -1192,7 +1220,7 @@ CgenNode::CgenNode(Class_ nd, Basicness bstatus, CgenClassTableP ct)
 //
 //*****************************************************************
 
-void assign_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+void assign_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   expr->code(cgen, nt, s);
   Symbol class_name = cgen->context.C.lookup(SELF_TYPE)->get_name();
   auto &[reg, offset] =
@@ -1202,8 +1230,7 @@ void assign_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
 
 int32_t assign_class::nt() { return 0; }
 
-void static_dispatch_class::code(CgenClassTableP cgen, int32_t &nt,
-                                 ostream &s) {
+void static_dispatch_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   for (int i = actual->first(); actual->more(i); i = actual->next(i)) {
     actual->nth(i)->code(cgen, nt, s);
     emit_push(ACC, s);
@@ -1236,10 +1263,8 @@ void static_dispatch_class::code(CgenClassTableP cgen, int32_t &nt,
 
   emit_label_def(good_case, s);
 
-  int32_t method_offset =
-      cgen->context.method_environment[type_name->get_string()]
-          .lookup(name)
-          ->second;
+  size_t method_offset =
+      *cgen->context.method_environment[type_name->get_string()].lookup(name);
 
   emit_partial_load_address(T1, s);
   emit_disptable_ref(type_name, s);
@@ -1251,7 +1276,7 @@ void static_dispatch_class::code(CgenClassTableP cgen, int32_t &nt,
 
 int32_t static_dispatch_class::nt() { return 0; }
 
-void dispatch_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+void dispatch_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   for (int i = actual->first(); actual->more(i); i = actual->next(i)) {
     actual->nth(i)->code(cgen, nt, s);
     emit_push(ACC, s);
@@ -1280,10 +1305,8 @@ void dispatch_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
     class_name = expr->get_type();
   }
 
-  int32_t method_offset =
-      cgen->context.method_environment[class_name->get_string()]
-          .lookup(name)
-          ->second;
+  size_t method_offset =
+      *cgen->context.method_environment[class_name->get_string()].lookup(name);
 
   emit_load_method(T1, method_offset, s);
 
@@ -1303,7 +1326,7 @@ int32_t dispatch_class::nt() {
   return *std::max_element(nts.begin(), nts.end());
 }
 
-void cond_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+void cond_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   pred->code(cgen, nt, s);
   emit_load(ACC, DEFAULT_OBJFIELDS, ACC, s);
   int midLabel = cgen->free_label++;
@@ -1324,7 +1347,7 @@ int32_t cond_class::nt() {
   return std::max({pred->nt(), then_exp->nt(), else_exp->nt()});
 }
 
-void loop_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+void loop_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   int startLabel = cgen->free_label++;
   int endLabel = cgen->free_label++;
   emit_label_def(startLabel, s);
@@ -1338,11 +1361,11 @@ void loop_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
 
 int32_t loop_class::nt() { return 0; }
 
-void typcase_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {}
+void typcase_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {}
 
 int32_t typcase_class::nt() { return 0; }
 
-void block_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+void block_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   for (int i = body->first(); body->more(i); i = body->next(i)) {
     body->nth(i)->code(cgen, nt, s);
   }
@@ -1362,7 +1385,7 @@ int32_t block_class::nt() {
   return *std::max_element(nts.begin(), nts.end());
 }
 
-void let_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+void let_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   Symbol class_name = cgen->context.C.lookup(SELF_TYPE)->get_name();
   auto &class_environment = cgen->context.E[class_name->get_string()];
   class_environment.enterscope();
@@ -1397,7 +1420,7 @@ int32_t let_class::nt() { return std::max({init->nt(), 1 + body->nt()}); }
 
 // Loads e1 and e2's int values in T1 and ACC
 void emit_prepare_arith_values(Expression e1, Expression e2,
-                               CgenClassTableP cgen, int32_t &nt, ostream &s) {
+                               CgenClassTableP cgen, size_t &nt, ostream &s) {
   e1->code(cgen, nt, s);
   emit_load(ACC, DEFAULT_OBJFIELDS, ACC, s);
   emit_push(ACC, s);
@@ -1432,7 +1455,7 @@ void emit_store_arith_result(ostream &s) {
   emit_store(T1, DEFAULT_OBJFIELDS, ACC, s);
 }
 
-void plus_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+void plus_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   emit_prepare_arith_values(e1, e2, cgen, nt, s);
   emit_add(ACC, T1, ACC, s);
   emit_store_arith_result(s);
@@ -1440,7 +1463,7 @@ void plus_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
 
 int32_t plus_class::nt() { return std::max(e1->nt(), e2->nt() + 1); }
 
-void sub_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+void sub_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   emit_prepare_arith_values(e1, e2, cgen, nt, s);
   emit_sub(ACC, T1, ACC, s);
   emit_store_arith_result(s);
@@ -1448,7 +1471,7 @@ void sub_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
 
 int32_t sub_class::nt() { return std::max(e1->nt(), e2->nt() + 1); }
 
-void mul_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+void mul_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   emit_prepare_arith_values(e1, e2, cgen, nt, s);
   emit_mul(ACC, T1, ACC, s);
   emit_store_arith_result(s);
@@ -1456,7 +1479,7 @@ void mul_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
 
 int32_t mul_class::nt() { return std::max(e1->nt(), e2->nt() + 1); }
 
-void divide_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+void divide_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   emit_prepare_arith_values(e1, e2, cgen, nt, s);
   emit_div(ACC, T1, ACC, s);
   emit_store_arith_result(s);
@@ -1464,7 +1487,7 @@ void divide_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
 
 int32_t divide_class::nt() { return std::max(e1->nt(), e2->nt() + 1); }
 
-void neg_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+void neg_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   e1->code(cgen, nt, s);
   emit_load(ACC, DEFAULT_OBJFIELDS, ACC, s);
   emit_neg(ACC, ACC, s);
@@ -1473,7 +1496,7 @@ void neg_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
 
 int32_t neg_class::nt() { return 0; }
 
-void lt_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+void lt_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   emit_prepare_arith_values(e1, e2, cgen, nt, s);
   emit_slt(ACC, T1, ACC, s);
   emit_push(ACC, s);
@@ -1484,7 +1507,7 @@ void lt_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
 
 int32_t lt_class::nt() { return std::max(e1->nt(), e2->nt() + 1); }
 
-void eq_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+void eq_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   e1->code(cgen, nt, s);
   emit_push(ACC, s);
   e2->code(cgen, nt, s);
@@ -1503,7 +1526,7 @@ void eq_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
 
 int32_t eq_class::nt() { return std::max(e1->nt(), e2->nt() + 1); }
 
-void leq_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+void leq_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   emit_prepare_arith_values(e1, e2, cgen, nt, s);
   emit_load_imm(T2, 1, s);
   emit_sub(T1, T1, T2, s);
@@ -1516,7 +1539,7 @@ void leq_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
 
 int32_t leq_class::nt() { return std::max(e1->nt(), e2->nt() + 1); }
 
-void comp_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+void comp_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   e1->code(cgen, nt, s);
   emit_load(ACC, DEFAULT_OBJFIELDS, ACC, s);
   emit_load_imm(T1, 1, s);
@@ -1529,7 +1552,7 @@ void comp_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
 
 int32_t comp_class::nt() { return 0; }
 
-void int_const_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+void int_const_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   //
   // Need to be sure we have an IntEntry *, not an arbitrary Symbol
   //
@@ -1538,19 +1561,19 @@ void int_const_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
 
 int32_t int_const_class::nt() { return 0; }
 
-void string_const_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+void string_const_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   emit_load_string(ACC, stringtable.lookup_string(token->get_string()), s);
 }
 
 int32_t string_const_class::nt() { return 0; }
 
-void bool_const_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+void bool_const_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   emit_load_bool(ACC, BoolConst(val), s);
 }
 
 int32_t bool_const_class::nt() { return 0; }
 
-void new__class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+void new__class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   if (type_name->equal_string(SELF_TYPE->get_string(), SELF_TYPE->get_len())) {
     emit_make_new_object_of_type(cgen->context.C.lookup(SELF_TYPE)->get_name(),
                                  s);
@@ -1561,17 +1584,17 @@ void new__class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
 
 int32_t new__class::nt() { return 0; }
 
-void isvoid_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {}
+void isvoid_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {}
 
 int32_t isvoid_class::nt() { return 0; }
 
-void no_expr_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+void no_expr_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   emit_move(ACC, ZERO, s);
 }
 
 int32_t no_expr_class::nt() { return 0; }
 
-void object_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+void object_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   if (name->equal_string(self->get_string(), self->get_len())) {
     emit_move(ACC, SELF, s);
   } else {
