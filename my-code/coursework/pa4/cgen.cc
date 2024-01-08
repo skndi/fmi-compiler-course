@@ -787,6 +787,13 @@ void CgenClassTable::code_initializer(CgenNodeP nd) {
     return;
   }
 
+  emit_addiu(SP, SP, -CALLEE_STACK_OFFSET(0), str);
+  emit_store(FP, 3, SP, str);
+  emit_store(SELF, 2, SP, str);
+  emit_store(RA, 1, SP, str);
+  emit_addiu(FP, SP, CALLEE_SAVED_REGISTERS_OFFSET, str);
+
+  emit_move(SELF, ACC, str);
   int32_t offset{};
   Features fs = nd->features;
   for (int i = fs->first(); fs->more(i); i = fs->next(i)) {
@@ -803,6 +810,11 @@ void CgenClassTable::code_initializer(CgenNodeP nd) {
   }
 
   emit_move(ACC, SELF, str);
+  emit_load(FP, 3, (SP), str);
+  emit_load(SELF, 2, (SP), str);
+  emit_load(RA, 1, (SP), str);
+  emit_addiu(SP, SP, CALLEE_STACK_OFFSET(0), str);
+
   emit_return(str);
 }
 
@@ -1191,11 +1203,7 @@ void assign_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
 int32_t assign_class::nt() { return 0; }
 
 void static_dispatch_class::code(CgenClassTableP cgen, int32_t &nt,
-                                 ostream &s) {}
-
-int32_t static_dispatch_class::nt() { return 0; }
-
-void dispatch_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+                                 ostream &s) {
   for (int i = actual->first(); actual->more(i); i = actual->next(i)) {
     actual->nth(i)->code(cgen, nt, s);
     emit_push(ACC, s);
@@ -1219,6 +1227,42 @@ void dispatch_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
   emit_partial_jal(s);
   emit_init_ref(Str, s);
   s << endl;
+
+  emit_load_imm(T1, get_line_number(), s);
+  Symbol file_name = cgen->context.C.lookup(SELF_TYPE)->get_filename();
+  emit_load_string(ACC, stringtable.lookup_string(file_name->get_string()), s);
+
+  emit_jal(DISPATCH_ABORT, s);
+
+  emit_label_def(good_case, s);
+
+  int32_t method_offset =
+      cgen->context.method_environment[type_name->get_string()]
+          .lookup(name)
+          ->second;
+
+  emit_partial_load_address(T1, s);
+  emit_disptable_ref(type_name, s);
+  s << endl;
+  emit_load(T1, method_offset, T1, s);
+
+  emit_jalr(T1, s);
+}
+
+int32_t static_dispatch_class::nt() { return 0; }
+
+void dispatch_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+  for (int i = actual->first(); actual->more(i); i = actual->next(i)) {
+    actual->nth(i)->code(cgen, nt, s);
+    emit_push(ACC, s);
+  }
+
+  expr->code(cgen, nt, s);
+
+  int32_t good_case = cgen->free_label;
+  cgen->free_label++;
+
+  emit_bne(ACC, ZERO, good_case, s);
 
   emit_load_imm(T1, get_line_number(), s);
   Symbol file_name = cgen->context.C.lookup(SELF_TYPE)->get_filename();
@@ -1365,7 +1409,7 @@ void emit_prepare_arith_values(Expression e1, Expression e2,
 // Leaves ptr to new object in ACC
 void emit_make_new_object_of_type(Symbol objType, ostream &s) {
   emit_partial_load_address(ACC, s);
-  emit_protobj_ref(Int, s);
+  emit_protobj_ref(objType, s);
   s << endl;
 
   emit_partial_jal(s);
@@ -1373,7 +1417,7 @@ void emit_make_new_object_of_type(Symbol objType, ostream &s) {
   s << endl;
 
   emit_partial_jal(s);
-  emit_init_ref(Int, s);
+  emit_init_ref(objType, s);
   s << endl;
 }
 
@@ -1506,7 +1550,14 @@ void bool_const_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
 
 int32_t bool_const_class::nt() { return 0; }
 
-void new__class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {}
+void new__class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
+  if (type_name->equal_string(SELF_TYPE->get_string(), SELF_TYPE->get_len())) {
+    emit_make_new_object_of_type(cgen->context.C.lookup(SELF_TYPE)->get_name(),
+                                 s);
+  } else {
+    emit_make_new_object_of_type(type_name, s);
+  }
+}
 
 int32_t new__class::nt() { return 0; }
 
@@ -1515,7 +1566,6 @@ void isvoid_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {}
 int32_t isvoid_class::nt() { return 0; }
 
 void no_expr_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
-
   emit_move(ACC, ZERO, s);
 }
 
