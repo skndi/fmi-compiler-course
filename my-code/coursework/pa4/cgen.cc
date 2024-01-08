@@ -1367,20 +1367,20 @@ void let_class::code(CgenClassTableP cgen, int32_t &nt, ostream &s) {
   auto &class_environment = cgen->context.E[class_name->get_string()];
   class_environment.enterscope();
 
-  emit_partial_load_address(ACC, s);
-  emit_protobj_ref(type_decl, s);
-  s << endl;
-
-  emit_partial_jal(s);
-  emit_method_ref(Object, ::copy, s);
-  s << endl;
-
-  emit_partial_jal(s);
-  emit_init_ref(type_decl, s);
-  s << endl;
-
   if (!dynamic_cast<no_expr_class *>(init)) {
     init->code(cgen, nt, s);
+  } else {
+    emit_partial_load_address(ACC, s);
+    emit_protobj_ref(type_decl, s);
+    s << endl;
+
+    emit_partial_jal(s);
+    emit_method_ref(Object, ::copy, s);
+    s << endl;
+
+    emit_partial_jal(s);
+    emit_init_ref(type_decl, s);
+    s << endl;
   }
 
   emit_store(ACC, nt, FP, s);
