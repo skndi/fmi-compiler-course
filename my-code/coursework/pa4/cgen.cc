@@ -49,7 +49,7 @@ extern int cgen_debug;
 //////////////////////////////////////////////////////////////////////
 Symbol arg, arg2, Bool, concat, cool_abort, copy, Int, in_int, in_string, IO,
     length, Main, main_meth, No_class, No_type, Object, out_int, out_string,
-    prim_slot, self, SELF_TYPE, Str, str_field, substr, type_name, val;
+    prim_slot, self, SELF_TYPE, Str, str_field, substr, type_name, val, init;
 //
 // Initializing the predefined symbols.
 //
@@ -82,6 +82,7 @@ static void initialize_constants(void) {
   substr = idtable.add_string("substr");
   type_name = idtable.add_string("type_name");
   val = idtable.add_string("_val");
+  init = idtable.add_string("_init");
 }
 
 static char *gc_init_names[] = {"_NoGC_Init", "_GenGC_Init", "_ScnGC_Init"};
@@ -330,6 +331,31 @@ static void emit_push(char *reg, ostream &str) {
 static void emit_pop(char *reg, ostream &str) {
   emit_addiu(SP, SP, 4, str);
   emit_load(reg, 0, SP, str);
+}
+
+// Leaves ptr to new object in ACC
+void emit_create_new_object_of_type(Symbol objType, ostream &s) {
+  emit_partial_load_address(ACC, s);
+  emit_protobj_ref(objType, s);
+  s << endl;
+
+  emit_partial_jal(s);
+  emit_method_ref(Object, ::copy, s);
+  s << endl;
+
+  emit_partial_jal(s);
+  emit_init_ref(objType, s);
+  s << endl;
+}
+
+static void emit_create_default_object(Symbol type, std::ostream &s) {
+  if (type->equal_string(Int->get_string(), Int->get_len()) ||
+      type->equal_string(Str->get_string(), Str->get_len()) ||
+      type->equal_string(Bool->get_string(), Bool->get_len())) {
+    emit_create_new_object_of_type(type, s);
+  } else {
+    emit_move(ACC, ZERO, s);
+  }
 }
 
 //
@@ -814,6 +840,11 @@ void CgenClassTable::code_initializer(CgenNodeP nd) {
   emit_addiu(FP, SP, CALLEE_SAVED_REGISTERS_OFFSET, str);
 
   emit_move(SELF, ACC, str);
+
+  emit_partial_jal(str);
+  emit_init_ref(nd->parent, str);
+  str << endl;
+
   int32_t offset{};
   Features fs = nd->features;
   for (int i = fs->first(); fs->more(i); i = fs->next(i)) {
@@ -1393,17 +1424,7 @@ void let_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   if (!dynamic_cast<no_expr_class *>(init)) {
     init->code(cgen, nt, s);
   } else {
-    emit_partial_load_address(ACC, s);
-    emit_protobj_ref(type_decl, s);
-    s << endl;
-
-    emit_partial_jal(s);
-    emit_method_ref(Object, ::copy, s);
-    s << endl;
-
-    emit_partial_jal(s);
-    emit_init_ref(type_decl, s);
-    s << endl;
+    emit_create_default_object(type_decl, s);
   }
 
   emit_store(ACC, nt, FP, s);
@@ -1429,27 +1450,12 @@ void emit_prepare_arith_values(Expression e1, Expression e2,
   emit_pop(T1, s);
 }
 
-// Leaves ptr to new object in ACC
-void emit_make_new_object_of_type(Symbol objType, ostream &s) {
-  emit_partial_load_address(ACC, s);
-  emit_protobj_ref(objType, s);
-  s << endl;
-
-  emit_partial_jal(s);
-  emit_method_ref(Object, ::copy, s);
-  s << endl;
-
-  emit_partial_jal(s);
-  emit_init_ref(objType, s);
-  s << endl;
-}
-
-// Creates new Int objectd and fills it with correct data
+// Creates new Int object and fills it with correct data
 // Takes int value from ACC and leaves ptr to new obj in ACC
 void emit_store_arith_result(ostream &s) {
   emit_push(ACC, s);
 
-  emit_make_new_object_of_type(Int, s);
+  emit_create_new_object_of_type(Int, s);
 
   emit_pop(T1, s);
   emit_store(T1, DEFAULT_OBJFIELDS, ACC, s);
@@ -1500,7 +1506,7 @@ void lt_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   emit_prepare_arith_values(e1, e2, cgen, nt, s);
   emit_slt(ACC, T1, ACC, s);
   emit_push(ACC, s);
-  emit_make_new_object_of_type(Bool, s);
+  emit_create_new_object_of_type(Bool, s);
   emit_pop(T1, s);
   emit_store(T1, DEFAULT_OBJFIELDS, ACC, s);
 }
@@ -1519,7 +1525,7 @@ void eq_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
 
   emit_push(ACC, s);
 
-  emit_make_new_object_of_type(Bool, s);
+  emit_create_new_object_of_type(Bool, s);
   emit_pop(T1, s);
   emit_store(T1, DEFAULT_OBJFIELDS, ACC, s);
 }
@@ -1532,7 +1538,7 @@ void leq_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   emit_sub(T1, T1, T2, s);
   emit_slt(ACC, T1, ACC, s);
   emit_push(ACC, s);
-  emit_make_new_object_of_type(Bool, s);
+  emit_create_new_object_of_type(Bool, s);
   emit_pop(T1, s);
   emit_store(T1, DEFAULT_OBJFIELDS, ACC, s);
 }
@@ -1545,7 +1551,7 @@ void comp_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   emit_load_imm(T1, 1, s);
   emit_sub(ACC, T1, ACC, s);
   emit_push(ACC, s);
-  emit_make_new_object_of_type(Bool, s);
+  emit_create_new_object_of_type(Bool, s);
   emit_pop(T1, s);
   emit_store(T1, DEFAULT_OBJFIELDS, ACC, s);
 }
@@ -1575,10 +1581,10 @@ int32_t bool_const_class::nt() { return 0; }
 
 void new__class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   if (type_name->equal_string(SELF_TYPE->get_string(), SELF_TYPE->get_len())) {
-    emit_make_new_object_of_type(cgen->context.C.lookup(SELF_TYPE)->get_name(),
-                                 s);
+    emit_create_new_object_of_type(
+        cgen->context.C.lookup(SELF_TYPE)->get_name(), s);
   } else {
-    emit_make_new_object_of_type(type_name, s);
+    emit_create_new_object_of_type(type_name, s);
   }
 }
 
