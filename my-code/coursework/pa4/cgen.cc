@@ -1269,22 +1269,9 @@ void static_dispatch_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
 
   expr->code(cgen, nt, s);
 
-  int32_t good_case = cgen->free_label;
-  cgen->free_label++;
+  int32_t good_case = cgen->free_label++;
 
   emit_bne(ACC, ZERO, good_case, s);
-
-  emit_partial_load_address(ACC, s);
-  emit_protobj_ref(Str, s);
-  s << endl;
-
-  emit_partial_jal(s);
-  emit_method_ref(Object, ::copy, s);
-  s << endl;
-
-  emit_partial_jal(s);
-  emit_init_ref(Str, s);
-  s << endl;
 
   emit_load_imm(T1, get_line_number(), s);
   Symbol file_name = cgen->context.C.lookup(SELF_TYPE)->get_filename();
@@ -1392,7 +1379,67 @@ void loop_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
 
 int32_t loop_class::nt() { return 0; }
 
-void typcase_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {}
+void typcase_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
+  expr->code(cgen, nt, s);
+  
+  // void case
+  int32_t good_case = cgen->free_label++;
+
+  emit_bne(ACC, ZERO, good_case, s);
+
+  emit_load_imm(T1, get_line_number(), s);
+  Symbol file_name = cgen->context.C.lookup(SELF_TYPE)->get_filename();
+  emit_load_string(ACC, stringtable.lookup_string(file_name->get_string()), s);
+
+  emit_jal(CASE_VOID, s);
+
+  emit_label_def(good_case, s);
+  // void case
+
+  emit_push(ACC, s);
+  emit_load(ACC, TAG_OFFSET, ACC, s);
+  
+  int start_label_index = cgen->free_label;
+  cgen->free_label += cases->len();
+  int end_label_index = cgen->free_label++;
+  for (int i = cases->first(); cases->more(i); i = cases->next(i)) {
+    branch_class *bc = ((branch_class*)(cases->nth(i)));
+    emit_partial_load_address(T1, s);
+    emit_protobj_ref(bc->type_decl, s);
+    s << endl;
+    emit_load(T1, 0, T1, s);
+    emit_beq(ACC, T1, start_label_index + i, s);
+  }
+
+  // case nomatch
+  emit_pop(ACC, s);
+  emit_jal(CASE_NOMATCH, s);
+  
+  // case nomatch
+
+  for (int i = cases->first(); cases->more(i); i = cases->next(i)) {
+    emit_label_def(start_label_index + i, s);
+    branch_class *bc = ((branch_class*)(cases->nth(i)));
+
+    Symbol class_name = cgen->context.C.lookup(SELF_TYPE)->get_name();
+    auto &class_environment = cgen->context.E[class_name->get_string()];
+    class_environment.enterscope();
+
+    emit_pop(ACC, s);
+    emit_store(ACC, nt, FP, s);
+
+    class_environment.addid(bc->name, new std::pair(std::string(FP), nt));
+
+    nt--;
+    bc->expr->code(cgen, nt, s);
+    class_environment.exitscope();
+    nt++;
+    
+    emit_branch(end_label_index, s);
+  }
+
+  emit_label_def(end_label_index, s);
+}
 
 int32_t typcase_class::nt() { return 0; }
 
