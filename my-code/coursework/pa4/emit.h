@@ -36,6 +36,8 @@
 #define STRCONST_PREFIX "str_const"
 #define BOOLCONST_PREFIX "bool_const"
 #define DISPATCH_ABORT "_dispatch_abort"
+#define CASE_NOMATCH "_case_abort"
+#define CASE_VOID "_case_abort2"
 #define EQUALITY_TEST "equality_test"
 
 #define EMPTYSLOT 0
