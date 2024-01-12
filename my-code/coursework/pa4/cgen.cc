@@ -335,17 +335,45 @@ static void emit_pop(char *reg, ostream &str) {
 
 // Leaves ptr to new object in ACC
 void emit_create_new_object_of_type(Symbol objType, ostream &s) {
-  emit_partial_load_address(ACC, s);
-  emit_protobj_ref(objType, s);
-  s << endl;
+  if (objType->equal_string(SELF_TYPE->get_string(), SELF_TYPE->get_len())) {
+    emit_load(ACC, TAG_OFFSET, SELF, s);
+    emit_load_imm(T1, 8, s);
+    emit_mul(ACC, ACC, T1, s);
+    emit_load_address(T1, "class_objTab", s);
+    emit_addu(ACC, T1, ACC, s);
+    emit_load(ACC, 0, ACC, s);
+  }
+  else {
+    emit_partial_load_address(ACC, s);
+    emit_protobj_ref(objType, s);
+    s << endl;
+  }
+
 
   emit_partial_jal(s);
   emit_method_ref(Object, ::copy, s);
   s << endl;
 
-  emit_partial_jal(s);
-  emit_init_ref(objType, s);
-  s << endl;
+  if (objType->equal_string(SELF_TYPE->get_string(), SELF_TYPE->get_len())) {
+    emit_push(ACC, s);
+
+    emit_load(ACC, TAG_OFFSET, SELF, s);
+    emit_load_imm(T1, 8, s);
+    emit_mul(ACC, ACC, T1, s);
+    emit_load_imm(T1, 4, s);
+    emit_addu(ACC, T1, ACC, s);
+    emit_load_address(T1, "class_objTab", s);
+    emit_addu(T1, T1, ACC, s);
+    emit_load(T1, 0, T1, s);
+
+    emit_pop(ACC, s);
+    emit_jal(T1, s);
+  }
+  else {
+    emit_partial_jal(s);
+    emit_init_ref(objType, s);
+    s << endl;
+  }
 }
 
 static void emit_create_default_object(Symbol type, std::ostream &s) {
@@ -1654,12 +1682,7 @@ void bool_const_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
 int32_t bool_const_class::nt() { return 0; }
 
 void new__class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
-  if (type_name->equal_string(SELF_TYPE->get_string(), SELF_TYPE->get_len())) {
-    emit_create_new_object_of_type(
-        cgen->context.C.lookup(SELF_TYPE)->get_name(), s);
-  } else {
-    emit_create_new_object_of_type(type_name, s);
-  }
+  emit_create_new_object_of_type(type_name, s);
 }
 
 int32_t new__class::nt() { return 0; }
