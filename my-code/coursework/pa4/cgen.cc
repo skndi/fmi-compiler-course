@@ -847,6 +847,24 @@ void CgenClassTable::code_initializer(CgenNodeP nd) {
 
   int32_t offset{};
   Features fs = nd->features;
+
+  context.C.enterscope();
+  context.C.addid(SELF_TYPE, nd);
+
+  auto &class_environment = context.E[name->get_string()];
+  class_environment.enterscope();
+
+  // First pass adds them with default type values
+  int attribute_offset = 0;
+  for (int i = fs->first(); fs->more(i); i = fs->next(i)) {
+    Feature f = fs->nth(i);
+    if (attr_class *a = dynamic_cast<attr_class *>(f)) {
+      class_environment.addid(a->name, new std::pair(std::string(SELF), size_t(DEFAULT_OBJFIELDS + attribute_offset++)));
+    }
+  }
+
+  // Second pass assignes them their initial values
+  attribute_offset = 0;
   for (int i = fs->first(); fs->more(i); i = fs->next(i)) {
     Feature f = fs->nth(i);
     if (attr_class *a = dynamic_cast<attr_class *>(f)) {
@@ -854,11 +872,13 @@ void CgenClassTable::code_initializer(CgenNodeP nd) {
       no_expr_class *expr = dynamic_cast<no_expr_class *>(a->init);
       if (!expr) {
         a->init->code(this, nt, str);
-        emit_store(ACC, DEFAULT_OBJFIELDS + offset, SELF, str);
+        emit_store(ACC, DEFAULT_OBJFIELDS + attribute_offset++, SELF, str);
       }
-      offset++;
     }
   }
+  
+  class_environment.exitscope();
+  context.C.exitscope();
 
   emit_move(ACC, SELF, str);
   emit_load(FP, 3, (SP), str);
@@ -1651,9 +1671,22 @@ void object_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   if (name->equal_string(self->get_string(), self->get_len())) {
     emit_move(ACC, SELF, s);
   } else {
-    Symbol class_name = cgen->context.C.lookup(SELF_TYPE)->get_name();
-    auto &[reg, offset] =
-        *(cgen->context.E[class_name->get_string()].lookup(name));
+    CgenNode *node__ = cgen->context.C.lookup(SELF_TYPE);
+    Symbol class_name;
+    if (!node__) {
+      cout << "(object_class) Self type not found" << endl;  
+    }
+
+    class_name = cgen->context.C.lookup(SELF_TYPE)->get_name();
+
+    std::pair<std::string, size_t> *pair__ = cgen->context.E[class_name->get_string()].lookup(name);
+
+    if (!pair__) {
+      cout << "(object_class) Object " << name->get_string() << " not found in class " << class_name->get_string() << endl;
+    }
+
+    auto &[reg, offset] = *(pair__);
+    
     emit_load(ACC, offset, reg.data(), s);
   }
 }
