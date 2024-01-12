@@ -1583,11 +1583,21 @@ void eq_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   e2->code(cgen, nt, s);
   emit_move(T1, ACC, s);
   emit_pop(T2, s);
+
+  // Fill stack with true and skip to end if the addresses are the same
+  int skip_label = cgen->free_label++;
+  emit_load_imm(ACC, 1, s);
+  emit_push(ACC, s);
+  emit_beq(T1, T2, skip_label, s);
+  
+  emit_pop(ACC, s);
   emit_load_imm(ACC, 1, s);
   emit_load_imm(A1, 0, s);
   emit_jal(EQUALITY_TEST, s);
 
   emit_push(ACC, s);
+
+  emit_label_def(skip_label, s);
 
   emit_create_new_object_of_type(Bool, s);
   emit_pop(T1, s);
