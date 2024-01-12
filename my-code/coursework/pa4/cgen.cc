@@ -851,20 +851,7 @@ void CgenClassTable::code_initializer(CgenNodeP nd) {
   context.C.enterscope();
   context.C.addid(SELF_TYPE, nd);
 
-  auto &class_environment = context.E[name->get_string()];
-  class_environment.enterscope();
-
-  // First pass adds them with default type values
   int attribute_offset = 0;
-  for (int i = fs->first(); fs->more(i); i = fs->next(i)) {
-    Feature f = fs->nth(i);
-    if (attr_class *a = dynamic_cast<attr_class *>(f)) {
-      class_environment.addid(a->name, new std::pair(std::string(SELF), size_t(DEFAULT_OBJFIELDS + attribute_offset++)));
-    }
-  }
-
-  // Second pass assignes them their initial values
-  attribute_offset = 0;
   for (int i = fs->first(); fs->more(i); i = fs->next(i)) {
     Feature f = fs->nth(i);
     if (attr_class *a = dynamic_cast<attr_class *>(f)) {
@@ -877,7 +864,6 @@ void CgenClassTable::code_initializer(CgenNodeP nd) {
     }
   }
   
-  class_environment.exitscope();
   context.C.exitscope();
 
   emit_move(ACC, SELF, str);
@@ -951,7 +937,7 @@ void CgenClassTable::code_class_methods(CgenNodeP nd) {
   context.C.exitscope();
 }
 
-void CgenClassTable::code_all_methods() {
+void CgenClassTable::build_all_method_and_attribute_indices() {
   for (List<CgenNode> *l = nds; l; l = l->tl()) {
     CgenNodeP nd = l->hd();
     context.E[nd->name->get_string()].enterscope();
@@ -960,7 +946,9 @@ void CgenClassTable::code_all_methods() {
     std::vector<Symbol> methods;
     build_method_and_attribute_indices(nd, nd, methods, attribute_counter);
   }
+}
 
+void CgenClassTable::code_all_methods() {
   for (List<CgenNode> *l = nds; l; l = l->tl()) {
     CgenNodeP nd = l->hd();
     if (!nd->basic())
@@ -1237,6 +1225,11 @@ void CgenClassTable::code() {
   //                   - object initializer
   //                   - the class methods
   //                   - etc...
+
+  if (cgen_debug)
+    cout << "build all method and attribute indices" << endl;
+  build_all_method_and_attribute_indices();
+
   if (cgen_debug)
     cout << "coding initializers" << endl;
   code_initializers();
@@ -1343,8 +1336,12 @@ void dispatch_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
     class_name = expr->get_type();
   }
 
-  size_t method_offset =
-      *cgen->context.method_environment[class_name->get_string()].lookup(name);
+  size_t *method_offset__ = cgen->context.method_environment[class_name->get_string()].lookup(name);
+  if (!method_offset__) {
+    cout << "(dispatch_class) Method "<< name->get_string() << " of class " << class_name->get_string() << " not found" << endl;
+  }
+
+  size_t method_offset = *method_offset__;
 
   emit_load_method(T1, method_offset, s);
 

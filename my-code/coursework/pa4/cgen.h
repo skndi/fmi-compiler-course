@@ -71,6 +71,7 @@ private:
   void code_method(CgenNodeP nd, method_class *m);
   void code_class_methods(CgenNodeP nd);
   void code_all_methods();
+  void build_all_method_and_attribute_indices();
 
   // The following creates an inheritance graph from
   // a list of classes.  The graph is implemented as
