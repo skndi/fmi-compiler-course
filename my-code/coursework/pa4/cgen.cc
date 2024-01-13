@@ -887,8 +887,9 @@ void CgenClassTable::code_initializer(CgenNodeP nd) {
       no_expr_class *expr = dynamic_cast<no_expr_class *>(a->init);
       if (!expr) {
         a->init->code(this, nt, str);
-        emit_store(ACC, DEFAULT_OBJFIELDS + attribute_offset++, SELF, str);
+        emit_store(ACC, DEFAULT_OBJFIELDS + attribute_offset, SELF, str);
       }
+	  attribute_offset++;
     }
   }
   
