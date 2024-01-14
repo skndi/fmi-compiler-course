@@ -1482,7 +1482,9 @@ void typcase_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
 
   int start_label_index = cgen->free_label;
   cgen->free_label += cases->len();
+  int loop_label = cgen->free_label++;
   int end_label_index = cgen->free_label++;
+  emit_label_def(loop_label, s);
   for (int i = cases->first(); cases->more(i); i = cases->next(i)) {
     branch_class *bc = ((branch_class *)(cases->nth(i)));
     emit_partial_load_address(T1, s);
@@ -1492,10 +1494,20 @@ void typcase_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
     emit_beq(ACC, T1, start_label_index + i, s);
   }
 
+  int no_match_case = cgen->free_label++;
+  emit_beq(ACC, ZERO, no_match_case, s);
+  emit_load_address(T1, CLASSINHTAB, s);
+  emit_load_imm(T2, 4, s);
+  emit_mul(ACC, ACC, T2, s);
+  emit_addu(ACC, ACC, T1, s);
+  emit_load(ACC, 0, ACC, s);
+  emit_load(ACC, TAG_OFFSET, ACC, s);
+  emit_branch(loop_label, s);
+
   // case nomatch
+  emit_label_def(no_match_case, s);
   emit_pop(ACC, s);
   emit_jal(CASE_NOMATCH, s);
-
   // case nomatch
 
   for (int i = cases->first(); cases->more(i); i = cases->next(i)) {
