@@ -884,7 +884,19 @@ void CgenClassTable::code_initializer(CgenNodeP nd) {
 
   emit_init_def(name, str);
 
-  emit_addiu(SP, SP, -CALLEE_STACK_OFFSET(0), str);
+  Features fs = nd->features;
+  size_t nt = 0;
+  for (int i = fs->first(); fs->more(i); i = fs->next(i)) {
+    Feature f = fs->nth(i);
+    if (attr_class *a = dynamic_cast<attr_class *>(f)) {
+      no_expr_class *expr = dynamic_cast<no_expr_class *>(a->init);
+      if (!expr) {
+        nt = std::max(a->init->nt(), int32_t(nt));
+      }
+    }
+  }
+
+  emit_addiu(SP, SP, -CALLEE_STACK_OFFSET(nt), str);
   emit_store(FP, 3, SP, str);
   emit_store(SELF, 2, SP, str);
   emit_store(RA, 1, SP, str);
@@ -898,9 +910,6 @@ void CgenClassTable::code_initializer(CgenNodeP nd) {
     str << endl;
   }
 
-  int32_t offset{};
-  Features fs = nd->features;
-
   context.C.enterscope();
   context.C.addid(SELF_TYPE, nd);
 
@@ -912,7 +921,6 @@ void CgenClassTable::code_initializer(CgenNodeP nd) {
   for (int i = fs->first(); fs->more(i); i = fs->next(i)) {
     Feature f = fs->nth(i);
     if (attr_class *a = dynamic_cast<attr_class *>(f)) {
-      size_t nt{};
       no_expr_class *expr = dynamic_cast<no_expr_class *>(a->init);
       if (!expr) {
         a->init->code(this, nt, str);
@@ -928,7 +936,7 @@ void CgenClassTable::code_initializer(CgenNodeP nd) {
   emit_load(FP, 3, (SP), str);
   emit_load(SELF, 2, (SP), str);
   emit_load(RA, 1, (SP), str);
-  emit_addiu(SP, SP, CALLEE_STACK_OFFSET(0), str);
+  emit_addiu(SP, SP, CALLEE_STACK_OFFSET(nt), str);
 
   emit_return(str);
 }
