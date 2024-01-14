@@ -342,13 +342,11 @@ void emit_create_new_object_of_type(Symbol objType, ostream &s) {
     emit_load_address(T1, "class_objTab", s);
     emit_addu(ACC, T1, ACC, s);
     emit_load(ACC, 0, ACC, s);
-  }
-  else {
+  } else {
     emit_partial_load_address(ACC, s);
     emit_protobj_ref(objType, s);
     s << endl;
   }
-
 
   emit_partial_jal(s);
   emit_method_ref(Object, ::copy, s);
@@ -368,8 +366,7 @@ void emit_create_new_object_of_type(Symbol objType, ostream &s) {
 
     emit_pop(ACC, s);
     emit_jal(T1, s);
-  }
-  else {
+  } else {
     emit_partial_jal(s);
     emit_init_ref(objType, s);
     s << endl;
@@ -799,7 +796,6 @@ void CgenClassTable::code_class_object_table() {
   }
 }
 
-// TODO fix dispatch table creation
 void CgenClassTable::code_dispatch_methods(
     CgenNodeP nd, std::vector<std::pair<Symbol, Symbol>> &methods) {
   if (nd->get_parentnd()->get_name() != No_class) {
@@ -819,7 +815,7 @@ void CgenClassTable::code_dispatch_methods(
                        });
       if (iter != methods.end()) {
         iter->first = nd->name;
-        return;
+        continue;
       }
 
       methods.emplace_back(nd->name, a->name);
@@ -854,12 +850,8 @@ void CgenClassTable::code_dispatch_tables() {
 
 void CgenClassTable::code_initializer(CgenNodeP nd) {
   Symbol name = nd->get_name();
-  emit_init_def(name, str);
 
-  if (nd->basic()) {
-    emit_return(str);
-    return;
-  }
+  emit_init_def(name, str);
 
   emit_addiu(SP, SP, -CALLEE_STACK_OFFSET(0), str);
   emit_store(FP, 3, SP, str);
@@ -869,9 +861,11 @@ void CgenClassTable::code_initializer(CgenNodeP nd) {
 
   emit_move(SELF, ACC, str);
 
-  emit_partial_jal(str);
-  emit_init_ref(nd->parent, str);
-  str << endl;
+  if (nd->get_parentnd()->get_name() != No_class) {
+    emit_partial_jal(str);
+    emit_init_ref(nd->parent, str);
+    str << endl;
+  }
 
   int32_t offset{};
   Features fs = nd->features;
@@ -879,7 +873,11 @@ void CgenClassTable::code_initializer(CgenNodeP nd) {
   context.C.enterscope();
   context.C.addid(SELF_TYPE, nd);
 
-  int attribute_offset = 0;
+  int32_t attribute_offset{};
+  if (nd->get_parentnd()->get_name() != No_class) {
+    attribute_offset = get_numof_attrs(nd->get_parentnd());
+  }
+
   for (int i = fs->first(); fs->more(i); i = fs->next(i)) {
     Feature f = fs->nth(i);
     if (attr_class *a = dynamic_cast<attr_class *>(f)) {
@@ -889,10 +887,10 @@ void CgenClassTable::code_initializer(CgenNodeP nd) {
         a->init->code(this, nt, str);
         emit_store(ACC, DEFAULT_OBJFIELDS + attribute_offset, SELF, str);
       }
-	  attribute_offset++;
+      attribute_offset++;
     }
   }
-  
+
   context.C.exitscope();
 
   emit_move(ACC, SELF, str);
@@ -1365,9 +1363,11 @@ void dispatch_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
     class_name = expr->get_type();
   }
 
-  size_t *method_offset__ = cgen->context.method_environment[class_name->get_string()].lookup(name);
+  size_t *method_offset__ =
+      cgen->context.method_environment[class_name->get_string()].lookup(name);
   if (!method_offset__) {
-    cout << "(dispatch_class) Method "<< name->get_string() << " of class " << class_name->get_string() << " not found" << endl;
+    cout << "(dispatch_class) Method " << name->get_string() << " of class "
+         << class_name->get_string() << " not found" << endl;
   }
 
   size_t method_offset = *method_offset__;
@@ -1427,7 +1427,7 @@ int32_t loop_class::nt() { return 0; }
 
 void typcase_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   expr->code(cgen, nt, s);
-  
+
   // void case
   int32_t good_case = cgen->free_label++;
 
@@ -1444,12 +1444,12 @@ void typcase_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
 
   emit_push(ACC, s);
   emit_load(ACC, TAG_OFFSET, ACC, s);
-  
+
   int start_label_index = cgen->free_label;
   cgen->free_label += cases->len();
   int end_label_index = cgen->free_label++;
   for (int i = cases->first(); cases->more(i); i = cases->next(i)) {
-    branch_class *bc = ((branch_class*)(cases->nth(i)));
+    branch_class *bc = ((branch_class *)(cases->nth(i)));
     emit_partial_load_address(T1, s);
     emit_protobj_ref(bc->type_decl, s);
     s << endl;
@@ -1460,12 +1460,12 @@ void typcase_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   // case nomatch
   emit_pop(ACC, s);
   emit_jal(CASE_NOMATCH, s);
-  
+
   // case nomatch
 
   for (int i = cases->first(); cases->more(i); i = cases->next(i)) {
     emit_label_def(start_label_index + i, s);
-    branch_class *bc = ((branch_class*)(cases->nth(i)));
+    branch_class *bc = ((branch_class *)(cases->nth(i)));
 
     Symbol class_name = cgen->context.C.lookup(SELF_TYPE)->get_name();
     auto &class_environment = cgen->context.E[class_name->get_string()];
@@ -1480,7 +1480,7 @@ void typcase_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
     bc->expr->code(cgen, nt, s);
     class_environment.exitscope();
     nt++;
-    
+
     emit_branch(end_label_index, s);
   }
 
@@ -1618,7 +1618,7 @@ void eq_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   emit_load_imm(ACC, 1, s);
   emit_push(ACC, s);
   emit_beq(T1, T2, skip_label, s);
-  
+
   emit_pop(ACC, s);
   emit_load_imm(ACC, 1, s);
   emit_load_imm(A1, 0, s);
@@ -1705,19 +1705,21 @@ void object_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
     CgenNode *node__ = cgen->context.C.lookup(SELF_TYPE);
     Symbol class_name;
     if (!node__) {
-      cout << "(object_class) Self type not found" << endl;  
+      cout << "(object_class) Self type not found" << endl;
     }
 
     class_name = cgen->context.C.lookup(SELF_TYPE)->get_name();
 
-    std::pair<std::string, size_t> *pair__ = cgen->context.E[class_name->get_string()].lookup(name);
+    std::pair<std::string, size_t> *pair__ =
+        cgen->context.E[class_name->get_string()].lookup(name);
 
     if (!pair__) {
-      cout << "(object_class) Object " << name->get_string() << " not found in class " << class_name->get_string() << endl;
+      cout << "(object_class) Object " << name->get_string()
+           << " not found in class " << class_name->get_string() << endl;
     }
 
     auto &[reg, offset] = *(pair__);
-    
+
     emit_load(ACC, offset, reg.data(), s);
   }
 }
