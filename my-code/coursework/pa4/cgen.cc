@@ -339,7 +339,7 @@ void emit_create_new_object_of_type(Symbol objType, ostream &s) {
     emit_load(ACC, TAG_OFFSET, SELF, s);
     emit_load_imm(T1, 8, s);
     emit_mul(ACC, ACC, T1, s);
-    emit_load_address(T1, "class_objTab", s);
+    emit_load_address(T1, CLASSOBJTAB, s);
     emit_addu(ACC, T1, ACC, s);
     emit_load(ACC, 0, ACC, s);
   } else {
@@ -360,7 +360,7 @@ void emit_create_new_object_of_type(Symbol objType, ostream &s) {
     emit_mul(ACC, ACC, T1, s);
     emit_load_imm(T1, 4, s);
     emit_addu(ACC, T1, ACC, s);
-    emit_load_address(T1, "class_objTab", s);
+    emit_load_address(T1, CLASSOBJTAB, s);
     emit_addu(T1, T1, ACC, s);
     emit_load(T1, 0, T1, s);
 
@@ -568,6 +568,7 @@ void CgenClassTable::code_global_data() {
   //
   str << GLOBAL << CLASSNAMETAB << endl;
   str << GLOBAL << CLASSOBJTAB << endl;
+  str << GLOBAL << CLASSINHTAB << endl;
   str << GLOBAL;
   emit_protobj_ref(main, str);
   str << endl;
@@ -793,6 +794,36 @@ void CgenClassTable::code_class_object_table() {
     CgenNodeP cls = stack.top();
     stack.pop();
     code_class_object_entry(cls);
+  }
+}
+
+void CgenClassTable::code_class_inheritance_entry(CgenNodeP nd) {
+  Symbol name = nd->get_name();
+  if (name->equal_string(Object->get_string(), Object->get_len())) {
+    str << WORD;
+    str << "0";
+    str << endl;
+  }
+  else {
+    Symbol parent_name = nd->get_parent();
+    str << WORD;
+    emit_protobj_ref(parent_name, str);
+    str << endl;
+  }
+}
+
+void CgenClassTable::code_class_inheritance_table() {
+  str << CLASSINHTAB << LABEL;
+
+  std::stack<CgenNodeP> stack;
+  for (List<CgenNode> *l = nds; l; l = l->tl()) {
+    stack.push(l->hd());
+  }
+
+  while (!stack.empty()) {
+    CgenNodeP cls = stack.top();
+    stack.pop();
+    code_class_inheritance_entry(cls);
   }
 }
 
@@ -1233,6 +1264,10 @@ void CgenClassTable::code() {
   if (cgen_debug)
     cout << "coding class object table" << endl;
   code_class_object_table();
+
+  if (cgen_debug)
+    cout << "coding class inheritance table" << endl;
+  code_class_inheritance_table();
 
   if (cgen_debug)
     cout << "coding class dispatch tables" << endl;

@@ -54,6 +54,9 @@ private:
   void code_class_object_entry(CgenNodeP nd);
   void code_class_object_table();
 
+  void code_class_inheritance_entry(CgenNodeP nd);
+  void code_class_inheritance_table();
+
   struct MethodCompare {
     bool operator()(std::pair<std::string, int32_t> a,
                     std::pair<std::string, int32_t> b) {
