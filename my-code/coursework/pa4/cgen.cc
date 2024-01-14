@@ -803,8 +803,7 @@ void CgenClassTable::code_class_inheritance_entry(CgenNodeP nd) {
     str << WORD;
     str << "0";
     str << endl;
-  }
-  else {
+  } else {
     Symbol parent_name = nd->get_parent();
     str << WORD;
     emit_protobj_ref(parent_name, str);
@@ -1342,7 +1341,7 @@ void assign_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   emit_store(ACC, offset, reg.data(), s);
 }
 
-int32_t assign_class::nt() { return 0; }
+int32_t assign_class::nt() { return expr->nt(); }
 
 void static_dispatch_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   for (int i = actual->first(); actual->more(i); i = actual->next(i)) {
@@ -1375,7 +1374,14 @@ void static_dispatch_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   emit_jalr(T1, s);
 }
 
-int32_t static_dispatch_class::nt() { return 0; }
+int32_t static_dispatch_class::nt() {
+  int32_t nt{expr->nt()};
+  for (int i = actual->first(); actual->more(i); i = actual->next(i)) {
+    nt = std::max(actual->nth(i)->nt(), nt);
+  }
+
+  return nt;
+}
 
 void dispatch_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   for (int i = actual->first(); actual->more(i); i = actual->next(i)) {
@@ -1421,16 +1427,12 @@ void dispatch_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
 }
 
 int32_t dispatch_class::nt() {
-  std::vector<int32_t> nts;
+  int32_t nt{expr->nt()};
   for (int i = actual->first(); actual->more(i); i = actual->next(i)) {
-    nts.push_back(actual->nth(i)->nt());
+    nt = std::max(actual->nth(i)->nt(), nt);
   }
 
-  if (nts.empty()) {
-    return 0;
-  }
-
-  return *std::max_element(nts.begin(), nts.end());
+  return nt;
 }
 
 void cond_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
@@ -1466,7 +1468,7 @@ void loop_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   emit_label_def(endLabel, s);
 }
 
-int32_t loop_class::nt() { return 0; }
+int32_t loop_class::nt() { return std::max(pred->nt(), body->nt()); }
 
 void typcase_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   expr->code(cgen, nt, s);
@@ -1542,7 +1544,15 @@ void typcase_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   emit_label_def(end_label_index, s);
 }
 
-int32_t typcase_class::nt() { return 0; }
+int32_t typcase_class::nt() {
+  int32_t nt{};
+  for (int i = cases->first(); cases->more(i); i = cases->next(i)) {
+    branch_class *bc = ((branch_class *)(cases->nth(i)));
+    nt = std::max(bc->expr->nt(), nt);
+  }
+
+  return nt + 1;
+}
 
 void block_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   for (int i = body->first(); body->more(i); i = body->next(i)) {
@@ -1551,17 +1561,12 @@ void block_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
 }
 
 int32_t block_class::nt() {
-  std::vector<int32_t> nts;
-
+  int32_t nt{};
   for (int i = body->first(); body->more(i); i = body->next(i)) {
-    nts.push_back(body->nth(i)->nt());
+    nt = std::max(body->nth(i)->nt(), nt);
   }
 
-  if (nts.empty()) {
-    return 0;
-  }
-
-  return *std::max_element(nts.begin(), nts.end());
+  return nt;
 }
 
 void let_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
@@ -1648,7 +1653,7 @@ void neg_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   emit_store_arith_result(s);
 }
 
-int32_t neg_class::nt() { return 0; }
+int32_t neg_class::nt() { return e1->nt(); }
 
 void lt_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   emit_prepare_arith_values(e1, e2, cgen, nt, s);
@@ -1714,7 +1719,7 @@ void comp_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   emit_store(T1, DEFAULT_OBJFIELDS, ACC, s);
 }
 
-int32_t comp_class::nt() { return 0; }
+int32_t comp_class::nt() { return e1->nt(); }
 
 void int_const_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   //
@@ -1745,7 +1750,7 @@ int32_t new__class::nt() { return 0; }
 
 void isvoid_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {}
 
-int32_t isvoid_class::nt() { return 0; }
+int32_t isvoid_class::nt() { return e1->nt(); }
 
 void no_expr_class::code(CgenClassTableP cgen, size_t &nt, ostream &s) {
   emit_move(ACC, ZERO, s);
